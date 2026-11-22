@@ -212,6 +212,7 @@ object ApproxPercentileSpec extends TestSuite with SparkSessionTestWrapper with 
             sum(col("value")),
             bebe_approx_percentile(col("value"), lit(0.5))
           )
+          .orderBy(col("key").desc_nulls_first)
           .drop("key"),
         Seq(
           Row(null, null, null),

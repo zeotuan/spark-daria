@@ -31,6 +31,7 @@ inThisBuild(
 )
 
 lazy val commonSettings = Seq(
+  testFrameworks += new TestFramework("com.github.mrpowers.spark.daria.CustomFramework"),
   javaOptions ++= {
     Seq("-Xms512M", "-Xmx2048M", "-Duser.timezone=GMT") ++ (if (System.getProperty("java.version").startsWith("1.8.0"))
       Seq("-XX:+CMSClassUnloadingEnabled")
@@ -81,8 +82,6 @@ lazy val root = (project in file("."))
     noPublish
   )
   .aggregate(core, bebe)
-
-testFrameworks += new TestFramework("com.github.mrpowers.spark.daria.CustomFramework")
 
 scmInfo := Some(ScmInfo(url("https://github.com/MrPowers/spark-daria"), "git@github.com:MrPowers/spark-daria.git"))
 
