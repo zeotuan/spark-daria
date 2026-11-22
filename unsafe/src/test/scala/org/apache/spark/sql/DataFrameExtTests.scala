@@ -911,6 +911,63 @@ object DataFrameExtTests extends TestSuite with DataFrameComparer with ColumnCom
           ignoreNullable = false
         )
       }
+
+      def align(schema: StructType, row: Row, target: StructType): DataFrame =
+        spark.createDataFrame(java.util.Arrays.asList(row), schema).toSchemaWithNullabilityAligned(target)
+
+      "fill target fields missing from the original schema with nulls" - {
+        val nested = StructType(Seq(StructField("code", StringType), StructField("name", StringType)))
+        val target = StructType(Seq(StructField("id", IntegerType), StructField("n", nested), StructField("missing", StringType)))
+        val df = align(
+          StructType(Seq(StructField("id", IntegerType), StructField("n", StructType(Seq(StructField("code", StringType)))))),
+          Row(1, Row("AU")),
+          target
+        )
+
+        assert(df.schema == target)
+        assert(df.collect().toSeq == Seq(Row(1, Row("AU", null), null)))
+      }
+
+      "reject non nullable target fields missing from the original schema" - {
+        val target = StructType(Seq(StructField("id", IntegerType), StructField("missing", StringType, nullable = false)))
+        intercept[IllegalArgumentException](align(StructType(Seq(StructField("id", IntegerType))), Row(1), target))
+      }
+
+      "keep null parent struct with non nullable children null" - {
+        val target = StructType(Seq(StructField("opt", StructType(Seq(StructField("code", StringType, nullable = false))))))
+        val df     = align(StructType(Seq(StructField("opt", StructType(Seq(StructField("code", StringType)))))), Row(null), target)
+
+        assert(df.schema == target)
+        assert(df.collect().toSeq == Seq(Row(null)))
+      }
+
+      "align arrays of primitives at top level and inside structs" - {
+        val tags   = StructField("tags", ArrayType(StringType, containsNull = false), nullable = false)
+        val target = StructType(Seq(tags, StructField("n", StructType(Seq(tags)), nullable = false)))
+        val source =
+          StructType(Seq(StructField("tags", ArrayType(StringType)), StructField("n", StructType(Seq(StructField("tags", ArrayType(StringType)))))))
+        val df = align(source, Row(Seq("a"), Row(Seq("b"))), target)
+
+        assert(df.schema == target)
+        assert(df.collect().toSeq == Seq(Row(Seq("a"), Row(Seq("b")))))
+      }
+
+      "fail when a null array element is aligned to containsNull = false" - {
+        val element = StructType(Seq(StructField("p", StringType)))
+        val target  = StructType(Seq(StructField("l", ArrayType(element, containsNull = false))))
+        val df      = align(StructType(Seq(StructField("l", ArrayType(element)))), Row(Seq(null)), target)
+
+        intercept[Exception](df.collect())
+      }
+
+      "preserve target metadata and support names with dots" - {
+        val meta   = new MetadataBuilder().putString("comment", "carrier").build()
+        val target = StructType(Seq(StructField("a.b", StringType, nullable = false, meta)))
+        val df     = align(StructType(Seq(StructField("a.b", StringType))), Row("x"), target)
+
+        assert(df.schema == target)
+        assert(df.collect().toSeq == Seq(Row("x")))
+      }
     }
   }
 }
